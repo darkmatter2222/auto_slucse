@@ -12,12 +12,22 @@ This document provides context and guidelines for AI agents working on this proj
 ## Current Behavior
 
 The motor performs **6 rotations** in each direction with:
-- **Symmetric steep easing**: Quick ramp-up AND quick ramp-down (quadratic curve)
-- **Peak speed**: 1500µs delay (unchanged, optimal for this motor)
-- **Speed floor**: 30% minimum to prevent vibration at ends
+- **Sine-based easing**: Smooth acceleration and deceleration
+- **Peak speed**: 1200µs delay (optimal for this motor)
 - **2-second pause** between direction changes
+- **Bidirectional**: Clockwise then counter-clockwise, repeating
 
 ## Critical Technical Details
+
+### ⚠️ CRITICAL: Direction Control - DO NOT CHANGE
+The bidirectional motion is controlled by this exact logic:
+```cpp
+digitalWrite(DIR, clockwise ? HIGH : LOW);
+```
+- `HIGH` = Clockwise
+- `LOW` = Counter-clockwise
+
+**NEVER modify this logic.** If motor only goes one direction, the problem is elsewhere (wiring, timing, etc.), NOT the direction logic.
 
 ### GPIO Mapping (NodeMCU v2)
 | Label | GPIO | Function |
@@ -28,26 +38,23 @@ The motor performs **6 rotations** in each direction with:
 | D2 | GPIO4 | I2C SDA |
 
 ### Timing Requirements
-- **Pulse width**: 50µs HIGH for A4988 (critical for reliable stepping)
-- **Direction settle**: 100ms after changing DIR pin
+- **Pulse width**: 10µs HIGH minimum for A4988
+- **Direction settle**: 50ms after changing DIR pin
 - **Step delays**: Pre-computed array of 1200 values (6 rot × 200 steps)
-- **Min delay**: 1500µs (peak speed)
-- **Max delay**: 5000µs (start/end speed)
+- **Min delay**: 1200µs (peak speed)
+- **Max delay**: 15000µs (start/end speed)
 
-### Display Constraints
-- **NEVER update display during motor stepping** - I2C communication causes timing jitter
-- Update display ONLY at: startup, before motion, after motion, during pause
+### ⚠️ CRITICAL: Display Constraints
+- **NEVER update display during motor stepping** - I2C communication causes motor jitter/stutter
+- Update display ONLY at: startup, BEFORE motion starts, AFTER motion ends, during pause
+- The stepping loop must contain ONLY: digitalWrite and delayMicroseconds calls
 
 ## Easing Function
 
 ```cpp
-// Symmetric quadratic ease with speed floor
-if (t < 0.5f) {
-  speed = t2 * t2 * 0.7f + 0.3f;  // Quick ramp-up
-} else {
-  speed = 1.0f - (t2 * t2 * 0.7f);  // Quick ramp-down
-}
-if (speed < 0.30f) speed = 0.30f;  // Floor prevents vibration
+// Sine-based ease-in-out for smoothest motion
+float speed = sin(PI * t);  // t from 0.0 to 1.0
+if (speed < 0.08f) speed = 0.08f;  // Prevent stalling at ends
 ```
 
 ## Common Issues & Solutions
@@ -55,9 +62,9 @@ if (speed < 0.30f) speed = 0.30f;  // Floor prevents vibration
 | Issue | Cause | Fix |
 |-------|-------|-----|
 | Motor vibrates, won't turn | Wrong coil pairing | Swap one coil pair (A+/A- or B+/B-) |
-| Vibration at motion start/end | Easing too gradual | Use steeper quadratic curve with speed floor |
-| Jerky motion during rotation | Display updates during stepping | Move display updates outside stepping loop |
-| Motor stalls at low speed | Delay too long | Increase speed floor, decrease max delay |
+| Motor only goes ONE direction | **DO NOT change direction logic** | Check wiring, timing, power - direction code is correct |
+| Jerky/stuttering motion | Display updates during stepping | **NEVER** update display in stepping loop |
+| Motor stalls at low speed | Delay too long | Decrease max delay or increase speed floor |
 
 ## Build Commands
 
@@ -82,4 +89,6 @@ agents.md         - This file (AI agent context)
 1. **Motor timing is sensitive** - Test any delay changes carefully
 2. **Keep display simple** - Complex animations cause motor issues
 3. **Pre-compute everything** - No floating-point math during stepping
-4. **Peak speed is optimal** - 1500µs works well, don't reduce further
+4. **Peak speed is optimal** - 1200µs works well, don't reduce further
+5. **NEVER change direction logic** - `digitalWrite(DIR, clockwise ? HIGH : LOW)` is correct
+6. **NEVER update display during stepping** - Causes motor jitter

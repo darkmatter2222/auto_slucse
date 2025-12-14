@@ -18,7 +18,7 @@ const int TOTAL_STEPS = STEPS_PER_REV * NUM_ROTATIONS;  // 1200 steps
 // Pre-computed ease-in-out delays in microseconds for 6 rotations
 uint16_t easeDelays[TOTAL_STEPS];
 
-// Simple status display - NO progress bar, minimal updates
+// Simple status display - NO updates during motor motion to prevent jitter
 void showStatus(const char* line1, const char* line2) {
   display.clearDisplay();
   display.setTextSize(1);
@@ -37,58 +37,48 @@ void showStatus(const char* line1, const char* line2) {
 }
 
 void computeEaseDelays() {
-  // Pre-compute all 1200 delays (6 rotations x 200 steps)
-  // Symmetric steep easing: quick ramp-up AND quick ramp-down
-  // Peak speed maintained at 1500us minimum delay
+  // Pre-compute all 1000 delays for ultra-smooth motion
+  // Using sine-based ease-in-out for smoothest acceleration
+  // Target: 2 seconds total = 2,000,000us
   
   for (int i = 0; i < TOTAL_STEPS; i++) {
     float t = (float)i / (float)(TOTAL_STEPS - 1);  // 0.0 to 1.0
     
-    // Symmetric steep ease: quick acceleration AND deceleration
-    // Both halves use quadratic curve with floor for abrupt transitions
-    float speed;
-    if (t < 0.5f) {
-      // Ease-in: quadratic for steep acceleration (matches ease-out)
-      float t2 = t * 2.0f;  // 0 to 1 for first half
-      speed = t2 * t2 * 0.7f + 0.3f;  // Quadratic rise with floor
-    } else {
-      // Ease-out: quadratic for steep deceleration
-      float t2 = (t - 0.5f) * 2.0f;  // 0 to 1 for second half
-      speed = 1.0f - (t2 * t2 * 0.7f);  // Quadratic falloff with floor
-    }
+    // Sine-based ease-in-out: smoothest possible curve
+    // speed = sin(pi * t) - peaks at 1.0 at t=0.5, zero at ends
+    float speed = sin(PI * t);
+    if (speed < 0.08f) speed = 0.08f;  // Clamp minimum to prevent stalling
     
-    // Minimum speed floor to prevent vibration at ends
-    if (speed < 0.30f) speed = 0.30f;
-    
-    // Map speed to delay - peak speed at 1500us (unchanged)
-    int delayUs = (int)(1500.0f / speed);
-    if (delayUs < 1500) delayUs = 1500;  // Peak speed maintained
-    if (delayUs > 5000) delayUs = 5000;  // Steeper = lower max delay
+    // Map speed to delay: slow=4000us at ends, fast=1200us in middle
+    // Average ~2000us = 2ms per step, 1000 steps = 2 seconds
+    int delayUs = (int)(1200.0f / speed);
+    if (delayUs < 1200) delayUs = 1200;
+    if (delayUs > 15000) delayUs = 15000;
     
     easeDelays[i] = delayUs;
   }
 }
 
 void stepMultipleRotations(bool clockwise, const char* dirLabel) {
-  // Set direction - HIGH = clockwise, LOW = counter-clockwise
+  // CRITICAL: Set direction pin - HIGH=clockwise, LOW=counter-clockwise
+  // DO NOT CHANGE THIS LOGIC - it controls bidirectional motion
   digitalWrite(DIR, clockwise ? HIGH : LOW);
-  delay(100);  // Direction settle time - important for A4988
+  delay(50);  // Direction settle time
   
-  // Show status ONCE before motion - no updates during motion!
+  // Show status ONCE before motion starts - NO updates during stepping!
+  // Display updates during stepping cause motor jitter due to I2C timing
   showStatus(dirLabel, "6 rotations");
-  delay(100);  // Let display finish before stepping
   
-  // Pure uninterrupted motion - NO display updates during stepping
+  // Pure uninterrupted stepping loop - absolutely NO display calls here
   for (int i = 0; i < TOTAL_STEPS; i++) {
     digitalWrite(STEP, HIGH);
-    delayMicroseconds(50);  // 50us pulse width (matches working sample)
+    delayMicroseconds(10);  // Pulse width
     digitalWrite(STEP, LOW);
     delayMicroseconds(easeDelays[i]);
   }
   
-  // Show completion after motion
+  // Show completion AFTER motion ends
   showStatus(dirLabel, "COMPLETE");
-  delay(100);
 }
 
 void showPause(int seconds) {
@@ -122,14 +112,21 @@ void setup() {
     Serial.println("SSD1306 allocation failed");
   }
   
-  showStatus("STARTING", "Please wait");
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.println("STEPPER CONTROL");
+  display.setTextSize(2);
+  display.setCursor(0, 20);
+  display.println("6 x ROT");
+  display.setCursor(0, 40);
+  display.println("each dir");
+  display.display();
   
   // Pre-compute smooth ease curve
   computeEaseDelays();
-  delay(1000);
-  
-  showStatus("READY", "");
-  delay(1000);
+  delay(2000);
 }
 
 void loop() {
