@@ -39,3 +39,10 @@
 
 # debug information files
 *.dwo
+
+# PlatformIO
+.pio/
+.vscode/
+
+# Sample/test code - not part of main project
+sampleCode/
