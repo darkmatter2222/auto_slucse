@@ -12,133 +12,98 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 const int DIR = 12;   // D6
 const int STEP = 14;  // D5
 const int STEPS_PER_REV = 200;
-const int NUM_ROTATIONS = 5;
-const int TOTAL_STEPS = STEPS_PER_REV * NUM_ROTATIONS;  // 1000 steps
+const int NUM_ROTATIONS = 6;
+const int TOTAL_STEPS = STEPS_PER_REV * NUM_ROTATIONS;  // 1200 steps
 
 // Pre-computed ease-in-out delays in microseconds for 5 rotations
-// Using 2 seconds total = 2,000,000us / 1000 steps = 2000us average
 uint16_t easeDelays[TOTAL_STEPS];
 
-// Progress bar dimensions
-const int BAR_X = 4;
-const int BAR_Y = 40;
-const int BAR_WIDTH = 120;
-const int BAR_HEIGHT = 16;
-
-void drawProgressBar(int current, int total) {
-  int fillWidth = (current * BAR_WIDTH) / total;
-  
-  // Draw border
-  display.drawRect(BAR_X, BAR_Y, BAR_WIDTH, BAR_HEIGHT, SSD1306_WHITE);
-  // Fill progress
-  if (fillWidth > 4) {
-    display.fillRect(BAR_X + 2, BAR_Y + 2, fillWidth - 4, BAR_HEIGHT - 4, SSD1306_WHITE);
-  }
-}
-
-void updateDisplay(const char* direction, int currentRot, int totalRot, int percent) {
+// Simple status display - NO progress bar, minimal updates
+void showStatus(const char* line1, const char* line2) {
   display.clearDisplay();
-  
-  // Title
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(0, 0);
   display.println("STEPPER CONTROL");
   
-  // Direction with larger text
   display.setTextSize(2);
-  display.setCursor(0, 14);
-  display.println(direction);
+  display.setCursor(0, 20);
+  display.println(line1);
   
-  // Progress bar (based on percent 0-100)
-  drawProgressBar(percent, 100);
-  
-  // Stats at bottom - rotation count
-  display.setTextSize(1);
-  display.setCursor(0, 58);
-  display.print("Rotation ");
-  display.print(currentRot);
-  display.print("/");
-  display.print(totalRot);
-  display.print("  ");
-  display.print(percent);
-  display.print("%");
+  display.setCursor(0, 42);
+  display.println(line2);
   
   display.display();
 }
 
 void computeEaseDelays() {
-  // Pre-compute all 1000 delays for ultra-smooth motion
-  // Using sine-based ease-in-out for smoothest acceleration
-  // Target: 2 seconds total = 2,000,000us
+  // Pre-compute all 1200 delays (6 rotations x 200 steps)
+  // Symmetric steep easing: quick ramp-up AND quick ramp-down
+  // Peak speed maintained at 1500us minimum delay
   
   for (int i = 0; i < TOTAL_STEPS; i++) {
     float t = (float)i / (float)(TOTAL_STEPS - 1);  // 0.0 to 1.0
     
-    // Sine-based ease-in-out: smoothest possible curve
-    // speed = sin(pi * t) - peaks at 1.0 at t=0.5, zero at ends
-    float speed = sin(PI * t);
-    if (speed < 0.08f) speed = 0.08f;  // Clamp minimum to prevent stalling
+    // Symmetric steep ease: quick acceleration AND deceleration
+    // Both halves use quadratic curve with floor for abrupt transitions
+    float speed;
+    if (t < 0.5f) {
+      // Ease-in: quadratic for steep acceleration (matches ease-out)
+      float t2 = t * 2.0f;  // 0 to 1 for first half
+      speed = t2 * t2 * 0.7f + 0.3f;  // Quadratic rise with floor
+    } else {
+      // Ease-out: quadratic for steep deceleration
+      float t2 = (t - 0.5f) * 2.0f;  // 0 to 1 for second half
+      speed = 1.0f - (t2 * t2 * 0.7f);  // Quadratic falloff with floor
+    }
     
-    // Map speed to delay: slow=4000us at ends, fast=1200us in middle
-    // Average ~2000us = 2ms per step, 1000 steps = 2 seconds
-    int delayUs = (int)(1200.0f / speed);
-    if (delayUs < 1200) delayUs = 1200;
-    if (delayUs > 15000) delayUs = 15000;
+    // Minimum speed floor to prevent vibration at ends
+    if (speed < 0.30f) speed = 0.30f;
+    
+    // Map speed to delay - peak speed at 1500us (unchanged)
+    int delayUs = (int)(1500.0f / speed);
+    if (delayUs < 1500) delayUs = 1500;  // Peak speed maintained
+    if (delayUs > 5000) delayUs = 5000;  // Steeper = lower max delay
     
     easeDelays[i] = delayUs;
   }
 }
 
-void stepMultipleRotations(bool clockwise, const char* label) {
+void stepMultipleRotations(bool clockwise, const char* dirLabel) {
   digitalWrite(DIR, clockwise ? HIGH : LOW);
   delay(50);  // Direction settle
   
-  // Show initial display
-  updateDisplay(label, 1, NUM_ROTATIONS, 0);
+  // Show status ONCE before motion - no updates during motion!
+  showStatus(dirLabel, "6 rotations");
   
-  int lastRotation = 0;
-  int lastPercent = -1;
-  
+  // Pure uninterrupted motion - NO display updates during stepping
   for (int i = 0; i < TOTAL_STEPS; i++) {
-    // Calculate current rotation and percentage
-    int currentRotation = (i / STEPS_PER_REV) + 1;
-    int percent = (i * 100) / TOTAL_STEPS;
-    
-    // Update display ONLY between rotations (when motor briefly pauses anyway)
-    // This keeps the motion ultra-smooth
-    if (currentRotation != lastRotation) {
-      updateDisplay(label, currentRotation, NUM_ROTATIONS, percent);
-      lastRotation = currentRotation;
-    }
-    
-    // Step the motor - uninterrupted smooth motion
     digitalWrite(STEP, HIGH);
     delayMicroseconds(10);
     digitalWrite(STEP, LOW);
     delayMicroseconds(easeDelays[i]);
   }
   
-  // Final update at 100%
-  updateDisplay(label, NUM_ROTATIONS, NUM_ROTATIONS, 100);
+  // Show completion after motion
+  showStatus(dirLabel, "COMPLETE");
 }
 
 void showPause(int seconds) {
-  for (int i = seconds; i > 0; i--) {
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0, 0);
-    display.println("STEPPER CONTROL");
-    display.setTextSize(2);
-    display.setCursor(0, 20);
-    display.println("PAUSE");
-    display.setTextSize(3);
-    display.setCursor(50, 40);
-    display.print(i);
-    display.display();
-    delay(1000);
-  }
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.setCursor(0, 0);
+  display.println("STEPPER CONTROL");
+  display.setTextSize(2);
+  display.setCursor(0, 25);
+  display.println("PAUSED");
+  display.setTextSize(1);
+  display.setCursor(0, 50);
+  display.print(seconds);
+  display.println(" seconds...");
+  display.display();
+  
+  delay(seconds * 1000);
 }
 
 void setup() {
@@ -154,31 +119,24 @@ void setup() {
     Serial.println("SSD1306 allocation failed");
   }
   
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0, 0);
-  display.println("STEPPER CONTROL");
-  display.setTextSize(2);
-  display.setCursor(0, 20);
-  display.println("5 x ROT");
-  display.setCursor(0, 40);
-  display.println("2 sec ea");
-  display.display();
+  showStatus("STARTING", "Please wait");
   
   // Pre-compute smooth ease curve
   computeEaseDelays();
-  delay(2000);
+  delay(1000);
+  
+  showStatus("READY", "");
+  delay(1000);
 }
 
 void loop() {
-  Serial.println("Clockwise 5 rotations...");
+  Serial.println("Clockwise 6 rotations...");
   stepMultipleRotations(true, "CLOCKWISE");
   
   showPause(2);
   
-  Serial.println("Counter-Clockwise 5 rotations...");
-  stepMultipleRotations(false, "C-CLOCKWISE");
+  Serial.println("Counter-Clockwise 6 rotations...");
+  stepMultipleRotations(false, "C-CLOCKWSE");
   
   showPause(2);
 }

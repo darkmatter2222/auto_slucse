@@ -8,8 +8,8 @@ A smooth, precision stepper motor controller using **NodeMCU v2 (ESP8266)** with
 
 ## ✨ Features
 
-- **Ultra-smooth motion** with sine-based ease-in-out acceleration
-- **5 continuous rotations** in each direction (~2 seconds total per direction)
+- **Ultra-smooth motion** with symmetric steep ease-in-out acceleration
+- **6 continuous rotations** in each direction (~2.4 seconds total per direction)
 - **Beautiful OLED display** showing:
   - Current direction (Clockwise / Counter-Clockwise)
   - Progress bar with smooth fill
@@ -21,9 +21,9 @@ A smooth, precision stepper motor controller using **NodeMCU v2 (ESP8266)** with
 ## 🎬 Demo
 
 The motor performs:
-1. **5 rotations clockwise** with smooth ease-in-out (starts slow, speeds up, slows down)
+1. **6 rotations clockwise** with steep ease-in-out (quick ramp-up, peak speed, quick ramp-down)
 2. **2 second pause** with countdown display
-3. **5 rotations counter-clockwise** with same smooth motion
+3. **6 rotations counter-clockwise** with same smooth motion
 4. **Repeat forever**
 
 ## 🔧 Hardware Required
@@ -104,29 +104,34 @@ Edit `src/main.cpp` to customize:
 
 ```cpp
 const int STEPS_PER_REV = 200;      // Motor steps per revolution
-const int NUM_ROTATIONS = 5;        // Rotations per direction
+const int NUM_ROTATIONS = 6;        // Rotations per direction
 ```
 
 ### Timing Adjustment
 The ease curve is computed in `computeEaseDelays()`. Modify these values:
-- `1200` - Minimum delay (fastest speed in middle)
-- `15000` - Maximum delay (slowest speed at ends)
+- `1500` - Minimum delay (fastest speed in middle)
+- `5000` - Maximum delay (slowest speed at ends)
 
 ## 🔬 Technical Details
 
 ### Ease Function
-Uses **sine-based easing** for the smoothest possible acceleration:
+Uses **symmetric quadratic easing** for quick, smooth acceleration and deceleration:
 ```cpp
-float speed = sin(PI * t);  // t from 0.0 to 1.0
+// Both halves use quadratic curve with speed floor
+if (t < 0.5f) {
+  speed = t2 * t2 * 0.7f + 0.3f;  // Quick ramp-up
+} else {
+  speed = 1.0f - (t2 * t2 * 0.7f);  // Quick ramp-down
+}
 ```
 This provides:
-- Gradual acceleration from stop
-- Peak velocity at midpoint
-- Gradual deceleration to stop
-- No jerky transitions
+- Quick acceleration from stop (no vibration)
+- Peak velocity at midpoint (1500µs delay)
+- Quick deceleration to stop (no vibration)
+- Speed floor prevents motor stalling
 
 ### Pre-computed Delays
-All 1000 step delays (5 rotations × 200 steps) are calculated at startup and stored in an array. This eliminates floating-point math during motion for consistent timing.
+All 1200 step delays (6 rotations × 200 steps) are calculated at startup and stored in an array. This eliminates floating-point math during motion for consistent timing.
 
 ### Display Updates
 The display only updates **between rotations** (not during stepping) to prevent I2C communication from causing timing jitter.
