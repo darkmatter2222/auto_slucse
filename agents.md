@@ -27,7 +27,17 @@ digitalWrite(DIR, clockwise ? HIGH : LOW);
 - `HIGH` = Clockwise
 - `LOW` = Counter-clockwise
 
-**NEVER modify this logic.** If motor only goes one direction, the problem is elsewhere (wiring, timing, etc.), NOT the direction logic.
+**NEVER modify this logic.** This is the *entire* mechanism that makes reverse work.
+
+Why reverse is so important (and how it works here):
+- The firmware intentionally runs two phases forever: clockwise (6 rotations) then counter-clockwise (6 rotations).
+- Each phase calls `stepMultipleRotations(true/false, ...)`.
+- Inside `stepMultipleRotations()`, direction is set exactly once per phase via `digitalWrite(DIR, clockwise ? HIGH : LOW);`, then a 50ms settle delay is applied.
+
+If it ever “looks like it only goes one direction”, do **not** change the DIR line. Common real causes:
+- ESP8266 watchdog resets during a long tight stepping loop (restarts the program so it keeps re-entering the same phase)
+- Wiring/coil pairing or driver wiring issues
+- Power/VMOT issues or driver current limit
 
 ### GPIO Mapping (NodeMCU v2)
 | Label | GPIO | Function |
@@ -43,11 +53,18 @@ digitalWrite(DIR, clockwise ? HIGH : LOW);
 - **Step delays**: Pre-computed array of 1200 values (6 rot × 200 steps)
 - **Min delay**: 1200µs (peak speed)
 - **Max delay**: 15000µs (start/end speed)
+- **Overall time scale**: `TIME_SCALE` in `computeEaseDelays()` (current default `0.25` = 4× faster)
 
 ### ⚠️ CRITICAL: Display Constraints
 - **NEVER update display during motor stepping** - I2C communication causes motor jitter/stutter
 - Update display ONLY at: startup, BEFORE motion starts, AFTER motion ends, during pause
-- The stepping loop must contain ONLY: digitalWrite and delayMicroseconds calls
+- The stepping loop must NOT call any OLED/I2C code.
+- On ESP8266, a long tight stepping loop may require an occasional `yield()`/`delay(0)` to avoid watchdog resets (which can look like it "never reverses").
+
+What we changed (the fix):
+- Removed all OLED/progress updates from inside the stepping loop.
+- Added a lightweight periodic `yield()` inside the stepping loop to keep ESP8266 background/WDT serviced.
+- OLED now only shows simple status before motion (RUN), after motion (DONE), and during pauses.
 
 ## Easing Function
 
@@ -92,3 +109,18 @@ agents.md         - This file (AI agent context)
 4. **Peak speed is optimal** - 1200µs works well, don't reduce further
 5. **NEVER change direction logic** - `digitalWrite(DIR, clockwise ? HIGH : LOW)` is correct
 6. **NEVER update display during stepping** - Causes motor jitter
+
+## Workflow Rules (No Exceptions)
+
+These are process requirements for this repo:
+
+### DO
+1. Update `agents.md` and `README.md` for *every* behavioral change (even “small” changes).
+2. Keep docs aligned with the actual firmware behavior (especially display timing and reverse behavior).
+3. Always attempt a firmware upload when finished (`pio run -t upload`) so changes are validated on the microcontroller.
+4. Commit changes on the existing branch and push to `origin/main` (this repo uses `main` as the working branch).
+
+### DON'T
+1. Don’t change the DIR control line or swap HIGH/LOW meanings.
+2. Don’t add OLED/I2C calls inside the stepping loop.
+3. Don’t “fix” one-direction symptoms by changing direction logic—find the real cause (WDT, wiring, power, timing).

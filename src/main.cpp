@@ -15,31 +15,37 @@ const int STEPS_PER_REV = 200;
 const int NUM_ROTATIONS = 6;
 const int TOTAL_STEPS = STEPS_PER_REV * NUM_ROTATIONS;  // 1200 steps
 
-// Pre-computed ease-in-out delays in microseconds for 6 rotations
+// Pre-computed ease-in-out delays in microseconds.
 uint16_t easeDelays[TOTAL_STEPS];
 
-// Simple status display - NO updates during motor motion to prevent jitter
-void showStatus(const char* line1, const char* line2) {
+void showStatus(const char* direction, const char* status) {
   display.clearDisplay();
+  
+  // Title
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(0, 0);
   display.println("STEPPER CONTROL");
   
+  // Direction with larger text
   display.setTextSize(2);
-  display.setCursor(0, 20);
-  display.println(line1);
-  
-  display.setCursor(0, 42);
-  display.println(line2);
+  display.setCursor(0, 14);
+  display.println(direction);
+
+  display.setTextSize(2);
+  display.setCursor(0, 40);
+  display.println(status);
   
   display.display();
 }
 
 void computeEaseDelays() {
-  // Pre-compute all 1000 delays for ultra-smooth motion
-  // Using sine-based ease-in-out for smoothest acceleration
-  // Target: 2 seconds total = 2,000,000us
+  // Pre-compute all delays for ultra-smooth motion.
+  // Sine-based ease-in-out for smoothest acceleration.
+
+  // Scale overall motion time (0.25 = 4x faster).
+  // Note: minimum delay is still clamped to 1200us (peak speed limit).
+  const float TIME_SCALE = 0.25f;
   
   for (int i = 0; i < TOTAL_STEPS; i++) {
     float t = (float)i / (float)(TOTAL_STEPS - 1);  // 0.0 to 1.0
@@ -49,9 +55,8 @@ void computeEaseDelays() {
     float speed = sin(PI * t);
     if (speed < 0.08f) speed = 0.08f;  // Clamp minimum to prevent stalling
     
-    // Map speed to delay: slow=4000us at ends, fast=1200us in middle
-    // Average ~2000us = 2ms per step, 1000 steps = 2 seconds
-    int delayUs = (int)(1200.0f / speed);
+    // Map speed to delay: fast=1200us in the middle; slower at ends.
+    int delayUs = (int)((1200.0f / speed) * TIME_SCALE);
     if (delayUs < 1200) delayUs = 1200;
     if (delayUs > 15000) delayUs = 15000;
     
@@ -59,44 +64,46 @@ void computeEaseDelays() {
   }
 }
 
-void stepMultipleRotations(bool clockwise, const char* dirLabel) {
-  // CRITICAL: Set direction pin - HIGH=clockwise, LOW=counter-clockwise
-  // DO NOT CHANGE THIS LOGIC - it controls bidirectional motion
+void stepMultipleRotations(bool clockwise, const char* label) {
   digitalWrite(DIR, clockwise ? HIGH : LOW);
-  delay(50);  // Direction settle time
+  delay(50);  // Direction settle
+
+  // Display updates must NOT happen during stepping.
+  showStatus(label, "RUN");
   
-  // Show status ONCE before motion starts - NO updates during stepping!
-  // Display updates during stepping cause motor jitter due to I2C timing
-  showStatus(dirLabel, "6 rotations");
-  
-  // Pure uninterrupted stepping loop - absolutely NO display calls here
   for (int i = 0; i < TOTAL_STEPS; i++) {
+    // Step the motor - uninterrupted smooth motion
     digitalWrite(STEP, HIGH);
-    delayMicroseconds(10);  // Pulse width
+    delayMicroseconds(10);
     digitalWrite(STEP, LOW);
     delayMicroseconds(easeDelays[i]);
+
+    // Keep ESP8266 background tasks serviced to avoid WDT resets.
+    // This does not touch I2C and is far less disruptive than OLED updates.
+    if ((i & 0x3F) == 0) {
+      yield();
+    }
   }
-  
-  // Show completion AFTER motion ends
-  showStatus(dirLabel, "COMPLETE");
+
+  showStatus(label, "DONE");
 }
 
 void showPause(int seconds) {
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0, 0);
-  display.println("STEPPER CONTROL");
-  display.setTextSize(2);
-  display.setCursor(0, 25);
-  display.println("PAUSED");
-  display.setTextSize(1);
-  display.setCursor(0, 50);
-  display.print(seconds);
-  display.println(" seconds...");
-  display.display();
-  
-  delay(seconds * 1000);
+  for (int i = seconds; i > 0; i--) {
+    display.clearDisplay();
+    display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0, 0);
+    display.println("STEPPER CONTROL");
+    display.setTextSize(2);
+    display.setCursor(0, 20);
+    display.println("PAUSE");
+    display.setTextSize(3);
+    display.setCursor(50, 40);
+    display.print(i);
+    display.display();
+    delay(1000);
+  }
 }
 
 void setup() {
@@ -121,7 +128,7 @@ void setup() {
   display.setCursor(0, 20);
   display.println("6 x ROT");
   display.setCursor(0, 40);
-  display.println("each dir");
+  display.println("x4 SPEED");
   display.display();
   
   // Pre-compute smooth ease curve
@@ -136,7 +143,7 @@ void loop() {
   showPause(2);
   
   Serial.println("Counter-Clockwise 6 rotations...");
-  stepMultipleRotations(false, "C-CLOCKWSE");
+  stepMultipleRotations(false, "C-CLOCKWISE");
   
   showPause(2);
 }

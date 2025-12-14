@@ -12,6 +12,7 @@ A smooth, precision stepper motor controller using **NodeMCU v2 (ESP8266)** with
 - **6 continuous rotations** in each direction
 - **Simple OLED display** showing direction and status
 - **No display updates during motion** - prevents motor jitter
+- **ESP8266 watchdog-safe stepping** - periodic `yield()` during motion (no I2C)
 - **Pre-computed timing** for jitter-free operation
 - **12V single power supply** option (NodeMCU can run from 12V via VIN)
 
@@ -109,6 +110,12 @@ The ease curve is computed in `computeEaseDelays()`. Modify these values:
 - `1200` - Minimum delay (fastest speed in middle)
 - `15000` - Maximum delay (slowest speed at ends)
 
+The overall motion time is controlled by a `TIME_SCALE` factor:
+- `0.25` = 4× faster (current default)
+- `1.0` = original speed
+
+Note: the code still clamps the minimum delay to `1200`µs (peak speed limit).
+
 ## 🔬 Technical Details
 
 ### Ease Function
@@ -127,6 +134,13 @@ All 1200 step delays (6 rotations × 200 steps) are calculated at startup and st
 
 ### Display Updates
 The display **ONLY updates before and after motion** - never during stepping. This is critical because I2C communication during stepping causes motor jitter.
+
+### ESP8266 Watchdog (Important)
+On ESP8266, long tight stepping loops can trigger watchdog resets if the background tasks aren’t serviced. The firmware includes a lightweight periodic `yield()` during stepping.
+
+This `yield()`:
+- Helps prevent resets that can *look like* “it never reverses” (because the program restarts and re-enters the first phase)
+- Does **not** touch I2C/OLED, so it’s far less disruptive than display updates
 
 ## 📁 Project Structure
 
