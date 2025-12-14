@@ -15,7 +15,7 @@ const int STEPS_PER_REV = 200;
 const int NUM_ROTATIONS = 6;
 const int TOTAL_STEPS = STEPS_PER_REV * NUM_ROTATIONS;  // 1200 steps
 
-// Pre-computed ease-in-out delays in microseconds for 5 rotations
+// Pre-computed ease-in-out delays in microseconds for 6 rotations
 uint16_t easeDelays[TOTAL_STEPS];
 
 // Simple status display - NO progress bar, minimal updates
@@ -70,22 +70,25 @@ void computeEaseDelays() {
 }
 
 void stepMultipleRotations(bool clockwise, const char* dirLabel) {
+  // Set direction - HIGH = clockwise, LOW = counter-clockwise
   digitalWrite(DIR, clockwise ? HIGH : LOW);
-  delay(50);  // Direction settle
+  delay(100);  // Direction settle time - important for A4988
   
   // Show status ONCE before motion - no updates during motion!
   showStatus(dirLabel, "6 rotations");
+  delay(100);  // Let display finish before stepping
   
   // Pure uninterrupted motion - NO display updates during stepping
   for (int i = 0; i < TOTAL_STEPS; i++) {
     digitalWrite(STEP, HIGH);
-    delayMicroseconds(10);
+    delayMicroseconds(50);  // 50us pulse width (matches working sample)
     digitalWrite(STEP, LOW);
     delayMicroseconds(easeDelays[i]);
   }
   
   // Show completion after motion
   showStatus(dirLabel, "COMPLETE");
+  delay(100);
 }
 
 void showPause(int seconds) {

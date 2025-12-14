@@ -28,7 +28,8 @@ The motor performs **6 rotations** in each direction with:
 | D2 | GPIO4 | I2C SDA |
 
 ### Timing Requirements
-- **Pulse width**: 10µs HIGH minimum for A4988
+- **Pulse width**: 50µs HIGH for A4988 (critical for reliable stepping)
+- **Direction settle**: 100ms after changing DIR pin
 - **Step delays**: Pre-computed array of 1200 values (6 rot × 200 steps)
 - **Min delay**: 1500µs (peak speed)
 - **Max delay**: 5000µs (start/end speed)
