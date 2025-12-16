@@ -63,7 +63,7 @@ Complete wiring instructions for the Auto SLUCSE stepper motor controller.
 
 ### Option 1: Single 12V Supply (Recommended)
 
-Use one 12V power supply for everything:
+Use one 12V power supply for everything (recommended wiring):
 
 ```
 ┌─────────────────┐
@@ -72,20 +72,26 @@ Use one 12V power supply for everything:
 │                 │
 │  +12V ──────────┼──────┬──────────► A4988 VMOT
 │                 │      │
-│                 │      └──────────► NodeMCU VIN
+│                 │      └──────────► 7805 IN
 │                 │
 │  GND ───────────┼──────┬──────────► A4988 GND
 │                 │      │
+│                 │      ├──────────► 7805 GND
 │                 │      ├──────────► NodeMCU GND
 │                 │      │
 │                 │      └──────────► SSD1306 GND
 └─────────────────┘
 
-NodeMCU 3.3V ──────────────────────► A4988 VDD
-NodeMCU 3.3V ──────────────────────► SSD1306 VCC
+7805 OUT (+5V) ─────────────────────► NodeMCU VIN (5V input)
+
+NodeMCU 3.3V ───────────────────────► A4988 VDD (logic)
+NodeMCU 3.3V ───────────────────────► SSD1306 VCC
 ```
 
-The NodeMCU has an onboard voltage regulator that accepts 7-12V on VIN and outputs 3.3V for internal use and peripherals.
+Notes:
+- This setup avoids feeding 12V directly into the NodeMCU.
+- **Common ground is mandatory:** 12V GND, 7805 GND, NodeMCU GND, and A4988 GND/VMOT GND must all be tied together.
+- Add a **100–470µF (25V+) electrolytic** across **A4988 VMOT↔GND** close to the driver to reduce spikes/resets.
 
 ### Option 2: Dual Power Supplies
 
@@ -157,12 +163,22 @@ If you have separate 5V and 12V supplies:
                                     │                │                   │
                                     └────────────────┼───────────────────┘
                                                      │
-┌─────────────────┐                                  │
-│   12V SUPPLY    │                                  │
-├─────────────────┤                                  │
-│  +12V ──────────┼──► to VMOT and VIN              │
-│  GND ───────────┼──► to all GND points ◄──────────┘
+                                    ┌─────────────────────────────────────┐
+                                    │         7805 REGULATOR MODULE       │
+                                    │                                     │
+                                    │ IN  ◄────────── +12V                │
+                                    │ GND ◄────────── 12V GND (common)    │
+                                    │ OUT ───────────► +5V to NodeMCU VIN │
+                                    └─────────────────────────────────────┘
+
+┌─────────────────┐
+│   12V SUPPLY    │
+├─────────────────┤
+│  +12V ──────────┼──► A4988 VMOT and 7805 IN
+│  GND ───────────┼──► all GND points (common ground)
 └─────────────────┘
+
+Add near A4988: 100–470uF electrolytic across VMOT↔GND (25V+)
 ```
 
 ---
@@ -198,8 +214,10 @@ The coil pairs are probably wired incorrectly. Try:
 Before powering on:
 
 - [ ] 12V connected to VMOT (not VDD!)
+- [ ] NodeMCU powered from +5V into VIN (e.g., via 7805/buck), not directly from 12V
 - [ ] VDD connected to 3.3V (not 12V!)
 - [ ] All GND points connected together
+- [ ] VMOT electrolytic capacitor installed near the A4988 (100–470µF, 25V+)
 - [ ] RST and SLP jumpered together
 - [ ] RST/SLP jumper connected to 3.3V
 - [ ] Motor coils verified with multimeter
