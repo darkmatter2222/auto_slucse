@@ -8,21 +8,20 @@ A smooth, precision stepper motor controller using **NodeMCU v2 (ESP8266)** with
 
 ## ✨ Features
 
-- **Ultra-smooth motion** with sine-based ease-in-out acceleration
-- **6 continuous rotations** in each direction
-- **Simple OLED display** showing direction and status
+- **Constant-speed motion** (no ease-in/out)
+- **Selectable speed: 1–5 revolutions per second (RPS)**
+- **Momentary button** cycles speed 1 → 2 → 3 → 4 → 5 → 1 …
+- **Simple OLED display** showing current RPS
 - **No display updates during motion** - prevents motor jitter
 - **ESP8266 watchdog-safe stepping** - periodic `yield()` during motion (no I2C)
-- **Pre-computed timing** for jitter-free operation
 - **12V single power supply** option (NodeMCU can run from 12V via VIN)
 
 ## 🎬 Demo
 
-The motor performs:
-1. **6 rotations clockwise** with smooth ease-in-out (starts slow, speeds up, slows down)
-2. **2 second pause**
-3. **6 rotations counter-clockwise** with same smooth motion
-4. **Repeat forever**
+On boot, the motor runs continuously (clockwise) at **5 RPS**.
+
+Press the button to cycle speed:
+`1 → 2 → 3 → 4 → 5 → 1 → ...`
 
 ## 🔧 Hardware Required
 
@@ -42,6 +41,7 @@ The motor performs:
 | D6 | GPIO12 | A4988 DIR |
 | D1 | GPIO5 | SSD1306 SCL |
 | D2 | GPIO4 | SSD1306 SDA |
+| D7 | GPIO13 | Speed button (momentary to GND) |
 | VIN | - | 12V Power (or 5V) |
 | GND | - | Common Ground |
 
@@ -102,35 +102,11 @@ Edit `src/main.cpp` to customize:
 
 ```cpp
 const int STEPS_PER_REV = 200;      // Motor steps per revolution
-const int NUM_ROTATIONS = 6;        // Rotations per direction
+// Speed is selected at runtime via the button (1-5 RPS).
+// Button uses INPUT_PULLUP: wire momentary switch between D7 and GND.
 ```
-
-### Timing Adjustment
-The ease curve is computed in `computeEaseDelays()`. Modify these values:
-- `1200` - Minimum delay (fastest speed in middle)
-- `15000` - Maximum delay (slowest speed at ends)
-
-The overall motion time is controlled by a `TIME_SCALE` factor:
-- `0.25` = 4× faster (current default)
-- `1.0` = original speed
-
-Note: the code still clamps the minimum delay to `1200`µs (peak speed limit).
 
 ## 🔬 Technical Details
-
-### Ease Function
-Uses **sine-based easing** for the smoothest possible acceleration:
-```cpp
-float speed = sin(PI * t);  // t from 0.0 to 1.0
-```
-This provides:
-- Gradual acceleration from stop
-- Peak velocity at midpoint
-- Gradual deceleration to stop
-- No jerky transitions
-
-### Pre-computed Delays
-All 1200 step delays (6 rotations × 200 steps) are calculated at startup and stored in an array. This eliminates floating-point math during motion for consistent timing.
 
 ### Display Updates
 The display **ONLY updates before and after motion** - never during stepping. This is critical because I2C communication during stepping causes motor jitter.

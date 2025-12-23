@@ -59,6 +59,20 @@ Complete wiring instructions for the Auto SLUCSE stepper motor controller.
 
 ---
 
+## 🔘 Speed Button (Momentary)
+
+The firmware supports a **momentary pushbutton** that cycles motor speed:
+`1 → 2 → 3 → 4 → 5 → 1 ...` revolutions per second (RPS).
+
+Wire it like this (no extra resistors needed):
+
+| NodeMCU Pin | GPIO | Button Pin | Notes |
+|-------------|------|------------|-------|
+| D7 | GPIO13 | One side | Configured as `INPUT_PULLUP` |
+| GND | - | Other side | Button shorts D7 to GND when pressed |
+
+---
+
 ## ⚡ Power Options
 
 ### Option 1: Single 12V Supply (Recommended)

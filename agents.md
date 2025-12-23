@@ -11,11 +11,11 @@ This document provides context and guidelines for AI agents working on this proj
 
 ## Current Behavior
 
-The motor performs **6 rotations** in each direction with:
-- **Sine-based easing**: Smooth acceleration and deceleration
-- **Peak speed**: 1200µs delay (optimal for this motor)
-- **2-second pause** between direction changes
-- **Bidirectional**: Clockwise then counter-clockwise, repeating
+The motor runs **continuously clockwise** with:
+- **Constant speed**: No acceleration/deceleration
+- **Selectable speed**: 1–5 revolutions per second (RPS)
+- **Button-controlled**: a momentary button cycles speed `1 → 2 → 3 → 4 → 5 → 1 ...`
+- **OLED display** shows the current RPS (and must not be updated inside the stepping loop)
 
 ## Critical Technical Details
 
@@ -30,7 +30,7 @@ digitalWrite(DIR, clockwise ? HIGH : LOW);
 **NEVER modify this logic.** This is the *entire* mechanism that makes reverse work.
 
 Why reverse is so important (and how it works here):
-- The firmware intentionally runs two phases forever: clockwise (6 rotations) then counter-clockwise (6 rotations).
+- The firmware intentionally runs two phases forever: clockwise (7.5 rotations) then counter-clockwise (7.5 rotations).
 - Each phase calls `stepMultipleRotations(true/false, ...)`.
 - Inside `stepMultipleRotations()`, direction is set exactly once per phase via `digitalWrite(DIR, clockwise ? HIGH : LOW);`, then a 50ms settle delay is applied.
 
@@ -46,14 +46,12 @@ If it ever “looks like it only goes one direction”, do **not** change the DI
 | D6 | GPIO12 | DIR signal |
 | D1 | GPIO5 | I2C SCL |
 | D2 | GPIO4 | I2C SDA |
+| D7 | GPIO13 | Speed button (momentary to GND, INPUT_PULLUP) |
 
 ### Timing Requirements
 - **Pulse width**: 10µs HIGH minimum for A4988
 - **Direction settle**: 50ms after changing DIR pin
-- **Step delays**: Pre-computed array of 1200 values (6 rot × 200 steps)
-- **Min delay**: 1200µs (peak speed)
-- **Max delay**: 15000µs (start/end speed)
-- **Overall time scale**: `TIME_SCALE` in `computeEaseDelays()` (current default `0.25` = 4× faster)
+- **Speed control**: Achieved by changing the time between step pulses (1–5 RPS)
 
 ### ⚠️ CRITICAL: Display Constraints
 - **NEVER update display during motor stepping** - I2C communication causes motor jitter/stutter
@@ -64,15 +62,7 @@ If it ever “looks like it only goes one direction”, do **not** change the DI
 What we changed (the fix):
 - Removed all OLED/progress updates from inside the stepping loop.
 - Added a lightweight periodic `yield()` inside the stepping loop to keep ESP8266 background/WDT serviced.
-- OLED now only shows simple status before motion (RUN), after motion (DONE), and during pauses.
-
-## Easing Function
-
-```cpp
-// Sine-based ease-in-out for smoothest motion
-float speed = sin(PI * t);  // t from 0.0 to 1.0
-if (speed < 0.08f) speed = 0.08f;  // Prevent stalling at ends
-```
+- OLED now only shows simple status when not actively stepping (boot, and after a speed change).
 
 ## Common Issues & Solutions
 
@@ -105,8 +95,8 @@ agents.md         - This file (AI agent context)
 
 1. **Motor timing is sensitive** - Test any delay changes carefully
 2. **Keep display simple** - Complex animations cause motor issues
-3. **Pre-compute everything** - No floating-point math during stepping
-4. **Peak speed is optimal** - 1200µs works well, don't reduce further
+3. **Avoid extra work during stepping** - Keep the stepping loop lean (no I2C)
+4. **Speed is sensitive** - Don’t reduce `STEP_DELAY_US` too far; tune carefully
 5. **NEVER change direction logic** - `digitalWrite(DIR, clockwise ? HIGH : LOW)` is correct
 6. **NEVER update display during stepping** - Causes motor jitter
 

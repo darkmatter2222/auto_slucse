@@ -11,105 +11,82 @@ Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 const int DIR = 12;   // D6
 const int STEP = 14;  // D5
+const int SPEED_BTN = 13;  // D7 - momentary button to GND (INPUT_PULLUP)
 const int STEPS_PER_REV = 200;
-const int NUM_ROTATIONS = 6;
-const int TOTAL_STEPS = STEPS_PER_REV * NUM_ROTATIONS;  // 1200 steps
+static constexpr uint8_t RPS_MIN = 1;
+static constexpr uint8_t RPS_MAX = 5;
+static constexpr uint16_t STEP_PULSE_US = 10;
+static constexpr uint16_t BUTTON_DEBOUNCE_MS = 35;
 
-// Pre-computed ease-in-out delays in microseconds.
-uint16_t easeDelays[TOTAL_STEPS];
+uint8_t currentRps = RPS_MAX;  // Boot at 5 revolutions per second
+bool uiUpdatePending = true;
 
-void showStatus(const char* direction, const char* status) {
+struct DebouncedButton {
+  bool lastReading = false;
+  bool stableState = false;
+  uint32_t lastChangeMs = 0;
+};
+
+DebouncedButton speedButton;
+
+void showRps(uint8_t rps) {
   display.clearDisplay();
-  
-  // Title
   display.setTextSize(1);
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(0, 0);
   display.println("STEPPER CONTROL");
-  
-  // Direction with larger text
-  display.setTextSize(2);
-  display.setCursor(0, 14);
-  display.println(direction);
 
   display.setTextSize(2);
-  display.setCursor(0, 40);
-  display.println(status);
-  
+  display.setCursor(0, 18);
+  display.println("SPEED");
+
+  display.setTextSize(2);
+  display.setCursor(0, 42);
+  display.print(rps);
+  display.println(" RPS");
+
   display.display();
 }
 
-void computeEaseDelays() {
-  // Pre-compute all delays for ultra-smooth motion.
-  // Sine-based ease-in-out for smoothest acceleration.
+bool isSpeedButtonPressedEvent() {
+  const uint32_t nowMs = millis();
+  const bool readingPressed = (digitalRead(SPEED_BTN) == LOW);
 
-  // Scale overall motion time (0.25 = 4x faster).
-  // Note: minimum delay is still clamped to 1200us (peak speed limit).
-  const float TIME_SCALE = 0.25f;
-  
-  for (int i = 0; i < TOTAL_STEPS; i++) {
-    float t = (float)i / (float)(TOTAL_STEPS - 1);  // 0.0 to 1.0
-    
-    // Sine-based ease-in-out: smoothest possible curve
-    // speed = sin(pi * t) - peaks at 1.0 at t=0.5, zero at ends
-    float speed = sin(PI * t);
-    if (speed < 0.08f) speed = 0.08f;  // Clamp minimum to prevent stalling
-    
-    // Map speed to delay: fast=1200us in the middle; slower at ends.
-    int delayUs = (int)((1200.0f / speed) * TIME_SCALE);
-    if (delayUs < 1200) delayUs = 1200;
-    if (delayUs > 15000) delayUs = 15000;
-    
-    easeDelays[i] = delayUs;
+  if (readingPressed != speedButton.lastReading) {
+    speedButton.lastReading = readingPressed;
+    speedButton.lastChangeMs = nowMs;
   }
-}
 
-void stepMultipleRotations(bool clockwise, const char* label) {
-  digitalWrite(DIR, clockwise ? HIGH : LOW);
-  delay(50);  // Direction settle
+  if ((nowMs - speedButton.lastChangeMs) < BUTTON_DEBOUNCE_MS) {
+    return false;
+  }
 
-  // Display updates must NOT happen during stepping.
-  showStatus(label, "RUN");
-  
-  for (int i = 0; i < TOTAL_STEPS; i++) {
-    // Step the motor - uninterrupted smooth motion
-    digitalWrite(STEP, HIGH);
-    delayMicroseconds(10);
-    digitalWrite(STEP, LOW);
-    delayMicroseconds(easeDelays[i]);
-
-    // Keep ESP8266 background tasks serviced to avoid WDT resets.
-    // This does not touch I2C and is far less disruptive than OLED updates.
-    if ((i & 0x3F) == 0) {
-      yield();
+  if (speedButton.stableState != readingPressed) {
+    speedButton.stableState = readingPressed;
+    if (speedButton.stableState) {
+      return true;  // pressed (stable) edge
     }
   }
 
-  showStatus(label, "DONE");
+  return false;
 }
 
-void showPause(int seconds) {
-  for (int i = seconds; i > 0; i--) {
-    display.clearDisplay();
-    display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
-    display.setCursor(0, 0);
-    display.println("STEPPER CONTROL");
-    display.setTextSize(2);
-    display.setCursor(0, 20);
-    display.println("PAUSE");
-    display.setTextSize(3);
-    display.setCursor(50, 40);
-    display.print(i);
-    display.display();
-    delay(1000);
+uint32_t stepIntervalUsForRps(uint8_t rps) {
+  if (rps < RPS_MIN) rps = RPS_MIN;
+  if (rps > RPS_MAX) rps = RPS_MAX;
+  const uint32_t stepsPerSecond = (uint32_t)rps * (uint32_t)STEPS_PER_REV;
+  if (stepsPerSecond == 0) {
+    return 1000000UL;
   }
+  const uint32_t intervalUs = 1000000UL / stepsPerSecond;
+  return (intervalUs < (uint32_t)STEP_PULSE_US) ? (uint32_t)STEP_PULSE_US : intervalUs;
 }
 
 void setup() {
   Serial.begin(115200);
   pinMode(STEP, OUTPUT);
   pinMode(DIR, OUTPUT);
+  pinMode(SPEED_BTN, INPUT_PULLUP);
   
   // Initialize I2C for display
   Wire.begin();
@@ -118,32 +95,46 @@ void setup() {
   if (!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
     Serial.println("SSD1306 allocation failed");
   }
-  
-  display.clearDisplay();
-  display.setTextSize(1);
-  display.setTextColor(SSD1306_WHITE);
-  display.setCursor(0, 0);
-  display.println("STEPPER CONTROL");
-  display.setTextSize(2);
-  display.setCursor(0, 20);
-  display.println("6 x ROT");
-  display.setCursor(0, 40);
-  display.println("x4 SPEED");
-  display.display();
-  
-  // Pre-compute smooth ease curve
-  computeEaseDelays();
-  delay(2000);
+
+  // Set direction once at startup (continuous clockwise motion).
+  // ⚠️ CRITICAL: Do not change this expression.
+  const bool clockwise = true;
+  digitalWrite(DIR, clockwise ? HIGH : LOW);
+  delay(50);  // Direction settle
+
+  showRps(currentRps);
+  delay(500);
 }
 
 void loop() {
-  Serial.println("Clockwise 6 rotations...");
-  stepMultipleRotations(true, "CLOCKWISE");
-  
-  showPause(2);
-  
-  Serial.println("Counter-Clockwise 6 rotations...");
-  stepMultipleRotations(false, "C-CLOCKWISE");
-  
-  showPause(2);
+  if (isSpeedButtonPressedEvent()) {
+    currentRps = (currentRps >= RPS_MAX) ? RPS_MIN : (uint8_t)(currentRps + 1);
+    uiUpdatePending = true;
+    Serial.printf("Speed changed: %u RPS\n", currentRps);
+  }
+
+  // Only update OLED when NOT actively stepping.
+  if (uiUpdatePending) {
+    showRps(currentRps);
+    uiUpdatePending = false;
+  }
+
+  const uint32_t stepIntervalUs = stepIntervalUsForRps(currentRps);
+  const uint32_t lowDelayUs = (stepIntervalUs > (uint32_t)STEP_PULSE_US)
+                                ? (stepIntervalUs - (uint32_t)STEP_PULSE_US)
+                                : 0;
+
+  digitalWrite(STEP, HIGH);
+  delayMicroseconds(STEP_PULSE_US);
+  digitalWrite(STEP, LOW);
+  if (lowDelayUs > 0) {
+    delayMicroseconds(lowDelayUs);
+  }
+
+  // Keep ESP8266 background tasks serviced to avoid WDT resets.
+  static uint16_t stepCounter = 0;
+  stepCounter++;
+  if ((stepCounter & 0x3F) == 0) {
+    yield();
+  }
 }
