@@ -119,10 +119,8 @@ This `yield()`:
 - Does **not** touch I2C/OLED, so it’s far less disruptive than display updates
 
 ### Smoothness / Resonance
-Some step rates can be audibly harsher because perfectly periodic step timing can excite mechanical resonance.
-To help keep sound and motion smoother across the full 1–8 RPS range, the firmware uses:
-- A precise fixed-point step interval generator (for accurate average speed)
-- A tiny bounded timing dither (spread-spectrum style) to reduce resonance at “exact” step rates
+Some step rates can be audibly harsher because stepper + mechanics can resonate at certain step frequencies.
+This firmware keeps step timing strictly periodic for stable torque (no intentional per-step jitter), and relies on driver tuning (current limit, decay behavior) and mechanical setup for best acoustics.
 
 ## 📁 Project Structure
 

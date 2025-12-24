@@ -55,10 +55,8 @@ If it ever “looks like it only goes one direction”, do **not** change the DI
 - **Speed control**: Achieved by changing the time between step pulses (1–8 RPS)
 
 ### Smoothness / Resonance (Firmware)
-Some step rates can be audibly harsher because perfectly periodic step timing can excite mechanical resonance.
-The firmware mitigates this by using:
-- A fixed-point interval generator for accurate average step rate
-- A tiny bounded timing dither (spread-spectrum style) to reduce resonance at “exact” step intervals
+Some step rates can be audibly harsher because stepper + mechanics can resonate at certain step frequencies.
+The firmware uses strictly periodic step timing for stable torque (no intentional per-step jitter).
 
 ### ⚠️ CRITICAL: Display Constraints
 - **NEVER update display during motor stepping** - I2C communication causes motor jitter/stutter
