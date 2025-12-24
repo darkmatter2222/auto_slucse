@@ -13,8 +13,9 @@ This document provides context and guidelines for AI agents working on this proj
 
 The motor runs **continuously clockwise** with:
 - **Constant speed**: No acceleration/deceleration
-- **Selectable speed**: 1–5 revolutions per second (RPS)
-- **Button-controlled**: a momentary button cycles speed `1 → 2 → 3 → 4 → 5 → 1 ...`
+- **Boot speed**: Starts at **3 RPS**
+- **Selectable speed**: 1–8 revolutions per second (RPS)
+- **Button-controlled**: a momentary button cycles speed `1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 → 1 ...`
 - **OLED display** shows the current RPS (and must not be updated inside the stepping loop)
 
 ## Critical Technical Details
@@ -51,7 +52,13 @@ If it ever “looks like it only goes one direction”, do **not** change the DI
 ### Timing Requirements
 - **Pulse width**: 10µs HIGH minimum for A4988
 - **Direction settle**: 50ms after changing DIR pin
-- **Speed control**: Achieved by changing the time between step pulses (1–5 RPS)
+- **Speed control**: Achieved by changing the time between step pulses (1–8 RPS)
+
+### Smoothness / Resonance (Firmware)
+Some step rates can be audibly harsher because perfectly periodic step timing can excite mechanical resonance.
+The firmware mitigates this by using:
+- A fixed-point interval generator for accurate average step rate
+- A tiny bounded timing dither (spread-spectrum style) to reduce resonance at “exact” step intervals
 
 ### ⚠️ CRITICAL: Display Constraints
 - **NEVER update display during motor stepping** - I2C communication causes motor jitter/stutter
