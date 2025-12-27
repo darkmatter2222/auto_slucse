@@ -44,5 +44,13 @@
 .pio/
 .vscode/
 
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# CFD app outputs
+test_CFD/fluid_app/backend/runs/
+
 # Sample/test code - not part of main project
 sampleCode/
