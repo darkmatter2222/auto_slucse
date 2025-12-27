@@ -94,6 +94,8 @@ platformio.ini    - PlatformIO config (ESP8266, Adafruit libs)
 README.md         - User documentation
 WIRING.md         - Detailed wiring guide
 agents.md         - This file (AI agent context)
+test_CFD/         - Contains CFD prototype app
+	fluid_app/       - Local STL viewer + GPU LBM prototype (React + FastAPI)
 ```
 
 ## Change Guidelines

@@ -1,0 +1,9 @@
+fastapi>=0.115.0,<1
+uvicorn[standard]>=0.34.0
+numpy>=2.2
+scipy>=1.15
+# PyVista 0.44.x pins vtk<9.4 which doesn't install on Python 3.13.
+pyvista>=0.46.0
+vtk>=9.4.0
+tqdm>=4.67
+pydantic>=2.10

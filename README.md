@@ -128,11 +128,20 @@ This firmware keeps step timing strictly periodic for stable torque (no intentio
 auto_slucse/
 ├── src/
 │   └── main.cpp          # Main application code
+├── test_CFD/              # CFD experiments (STL + notebooks)
+│   └── fluid_app/         # Local 3D viewer + GPU LBM prototype
 ├── platformio.ini        # PlatformIO configuration
 ├── README.md             # This file
 ├── WIRING.md             # Detailed wiring guide
 └── .gitignore            # Git ignore rules
 ```
+
+## 🌊 CFD Prototype (Local App)
+
+There is an experimental local app in [test_CFD/fluid_app/README.md](test_CFD/fluid_app/README.md) that:
+- Loads the STL in a 3D view (rotate/pivot)
+- Lets you select gravity direction and click a water source point
+- Runs a GPU-accelerated (PyTorch/CUDA) LBM-style simulation and plays back particle animation
 
 ## 🐛 Troubleshooting
 
