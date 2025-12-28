@@ -34,6 +34,7 @@ Frontend: `http://localhost:5173`
 ## Use
 
 - Rotate the STL with the mouse (OrbitControls).
+- If you translate/rotate the STL with TransformControls, picking and particle playback stay aligned with the moved model (the frontend converts world-space clicks/gravity into STL-local coordinates before sending the request).
 - Click the STL to set the source point.
 - Set **Gravity direction**, **Flow rate**, and **Rendering intensity**.
 - Click **Build to go**.
