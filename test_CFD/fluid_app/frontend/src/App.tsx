@@ -30,12 +30,14 @@ function FluidParticles({
   particleFrames, 
   isPlaying, 
   setIsPlaying, 
-  playbackSpeed 
+  playbackSpeed,
+  sizeScale,
 }: {
   particleFrames: { data: Float32Array; shape: number[] }
   isPlaying: boolean
   setIsPlaying: (v: boolean) => void
   playbackSpeed: number
+  sizeScale: number
 }) {
   const meshRef = useRef<THREE.InstancedMesh>(null)
   const frameRef = useRef({ idx: 0, acc: 0, initialized: false })
@@ -52,11 +54,16 @@ function FluidParticles({
   }, [particleFrames.shape])
 
   // Particle size based on count (smaller for more particles)
-  const particleSize = useMemo(() => {
+  const baseParticleSize = useMemo(() => {
     if (nParticles > 50000) return 1.2
     if (nParticles > 20000) return 1.8
     return 2.5
   }, [nParticles])
+
+  const particleSize = useMemo(() => {
+    const s = Math.max(0.1, Math.min(4.0, baseParticleSize * sizeScale))
+    return s
+  }, [baseParticleSize, sizeScale])
 
   useFrame((_, delta) => {
     if (!meshRef.current || nParticles === 0) return
@@ -147,6 +154,8 @@ function Scene(props: {
   isPlaying: boolean
   setIsPlaying: (v: boolean) => void
   playbackSpeed: number
+  showParticles: boolean
+  particleSizeScale: number
   showWireframe: boolean
   transformMode: 'translate' | 'rotate' | 'none'
   modelTransform: { position: Vec3; rotation: Vec3 }
@@ -317,12 +326,13 @@ function Scene(props: {
         )}
 
         {/* Particles rendered under same transform so they stay inside the moved/rotated model */}
-        {props.particleFrames && (
+        {props.particleFrames && props.showParticles && (
           <FluidParticles
             particleFrames={props.particleFrames}
             isPlaying={props.isPlaying}
             setIsPlaying={props.setIsPlaying}
             playbackSpeed={props.playbackSpeed}
+            sizeScale={props.particleSizeScale}
           />
         )}
       </group>
@@ -377,6 +387,8 @@ export default function App() {
   const [particleFrames, setParticleFrames] = useState<{ data: Float32Array; shape: number[] } | null>(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0)
+  const [showParticles, setShowParticles] = useState(true)
+  const [particleSizeScale, setParticleSizeScale] = useState(0.35)
   const [showWireframe, setShowWireframe] = useState(false)
   const [transformMode, setTransformMode] = useState<'translate' | 'rotate' | 'none'>('none')
   const [modelTransform, setModelTransform] = useState<{ position: Vec3; rotation: Vec3 }>({
@@ -570,6 +582,12 @@ export default function App() {
                 >
                   {isPlaying ? '⏸ Pause' : '▶ Play'}
                 </button>
+                <button
+                  className={`btn ${showParticles ? 'btn-secondary' : 'btn-primary'}`}
+                  onClick={() => setShowParticles(!showParticles)}
+                >
+                  {showParticles ? '◌ Hide Particles' : '◉ Show Particles'}
+                </button>
               </div>
               <div className="speed-control">
                 <span>Speed</span>
@@ -582,6 +600,18 @@ export default function App() {
                   onChange={(e) => setPlaybackSpeed(Number(e.target.value))}
                 />
                 <span>{playbackSpeed}x</span>
+              </div>
+              <div className="speed-control">
+                <span>Size</span>
+                <input
+                  type="range"
+                  min={0.1}
+                  max={2.0}
+                  step={0.05}
+                  value={particleSizeScale}
+                  onChange={(e) => setParticleSizeScale(Number(e.target.value))}
+                />
+                <span>{particleSizeScale.toFixed(2)}x</span>
               </div>
             </div>
           )}
@@ -611,6 +641,8 @@ export default function App() {
             isPlaying={isPlaying}
             setIsPlaying={setIsPlaying}
             playbackSpeed={playbackSpeed}
+            showParticles={showParticles}
+            particleSizeScale={particleSizeScale}
             showWireframe={showWireframe}
             transformMode={transformMode}
             modelTransform={modelTransform}
